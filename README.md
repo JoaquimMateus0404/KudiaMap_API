@@ -55,6 +55,26 @@ Swagger: `http://localhost:3000/api/docs`
 
 Painel Admin UI: `http://localhost:3000/admin`
 
+## Deploy na Vercel
+
+O projeto já está preparado para Vercel com `vercel.json` e função serverless em `api/index.js`.
+
+### Variáveis obrigatórias na Vercel
+
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
+### URLs após deploy
+
+- Swagger UI: `/api/docs`
+- JSON da documentação: `/api/docs.json`
+
+Se `/api/docs` abrir em branco, valide primeiro se `/api/docs.json` retorna JSON corretamente.
+
 ## Testes
 
 ```powershell
