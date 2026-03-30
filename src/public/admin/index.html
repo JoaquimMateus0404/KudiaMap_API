@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KudiaMap Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-badge">KM</span>
+          <div>
+            <h1>KudiaMap</h1>
+            <p>Painel Admin</p>
+          </div>
+        </div>
+
+        <div class="auth-box">
+          <label for="tokenInput">Token JWT (Admin)</label>
+          <textarea id="tokenInput" rows="4" placeholder="Cole aqui o token do admin"></textarea>
+          <button id="saveTokenBtn" class="btn btn-primary">Conectar</button>
+          <small>Faça login em <code>/api/auth/login</code> com um usuário <code>ADMIN</code>.</small>
+        </div>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <h2>Gestão do Sistema</h2>
+            <p>Controle de posts, moderação e visão geral operacional.</p>
+          </div>
+          <button id="refreshBtn" class="btn">Atualizar</button>
+        </header>
+
+        <section class="stats-grid" id="statsGrid">
+          <article class="card"><h3>Usuários</h3><p id="statUsers">--</p></article>
+          <article class="card"><h3>Lojas</h3><p id="statStores">--</p></article>
+          <article class="card"><h3>Produtos</h3><p id="statProducts">--</p></article>
+          <article class="card"><h3>Posts Publicados</h3><p id="statPostsPublished">--</p></article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h3>Posts (Admin)</h3>
+            <div class="filters">
+              <input type="text" id="searchInput" placeholder="Pesquisar por título/conteúdo..." />
+              <select id="statusFilter">
+                <option value="">Todos status</option>
+                <option value="DRAFT">Draft</option>
+                <option value="PUBLISHED">Published</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+              <label class="checkbox-inline">
+                <input type="checkbox" id="deletedFilter" />
+                Incluir removidos
+              </label>
+              <button id="applyFiltersBtn" class="btn btn-primary">Aplicar</button>
+            </div>
+          </div>
+
+          <div id="feedback" class="feedback" role="status"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Loja</th>
+                  <th>Status</th>
+                  <th>Criado em</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="postsTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="pagination">
+            <button id="prevPageBtn" class="btn">Anterior</button>
+            <span id="pageInfo">Página 1</span>
+            <button id="nextPageBtn" class="btn">Próxima</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
