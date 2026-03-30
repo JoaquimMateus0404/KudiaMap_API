@@ -37,6 +37,10 @@ Para geolocalização, `Store` usa `location` em formato GeoJSON e índice `2dsp
 
 1. Copie `.env.example` para `.env`.
 2. Ajuste `MONGODB_URI` e `JWT_SECRET`.
+3. Para upload de imagens, configure o Cloudinary:
+	- `CLOUDINARY_CLOUD_NAME`
+	- `CLOUDINARY_API_KEY`
+	- `CLOUDINARY_API_SECRET`
 
 ## Executar
 
@@ -72,7 +76,9 @@ npm test
 
 ### Produtos (Menu)
 
-- `POST /api/menus` (LOJA autenticada)
+- `POST /api/menus` (LOJA autenticada, suporta upload de imagem no cadastro via multipart/form-data)
+- `PATCH /api/menus/:id` (editar item do menu)
+- `PATCH /api/menus/:id/image` (upload de imagem para Cloudinary, multipart/form-data)
 - `GET /api/menus/search?q=x-burger&category=Hamburguer&minPrice=1000&maxPrice=3000`
 - `GET /api/menus/compare?name=x-burger`
 
@@ -120,6 +126,6 @@ Fluxo:
 ## Próximos passos recomendados
 
 - adicionar paginação e cache para busca de menus;
-- implementar upload de imagens (Cloudinary/S3);
+- adicionar transformação automática de imagens (thumbnails) no Cloudinary;
 - criar endpoint de analytics para ajudar na identificação contínua das necessidades dos usuários;
 - adicionar testes de integração para rotas de geolocalização e comparação de preços.

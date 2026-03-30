@@ -2,6 +2,8 @@ const express = require('express');
 const MenuItem = require('../models/MenuItem');
 const Store = require('../models/Store');
 const auth = require('../middleware/auth');
+const upload = require('../middleware/upload');
+const { uploadBufferToCloudinary } = require('../config/cloudinary');
 
 const router = express.Router();
 
@@ -9,20 +11,56 @@ const router = express.Router();
  * @swagger
  * /menus:
  *   post:
- *     summary: Cadastra item de menu (somente LOJA dona da loja)
+ *     summary: Cadastra item de menu (somente LOJA dona da loja), com upload opcional de imagem
  *     tags: [Menus]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [storeId, name, price]
+ *             properties:
+ *               storeId: { type: string }
+ *               name: { type: string }
+ *               description: { type: string }
+ *               category: { type: string }
+ *               price: { type: number }
+ *               available: { type: boolean }
+ *               image:
+ *                 type: string
+ *                 description: URL externa de imagem (opcional)
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [storeId, name, price]
+ *             properties:
+ *               storeId: { type: string }
+ *               name: { type: string }
+ *               description: { type: string }
+ *               category: { type: string }
+ *               price: { type: number }
+ *               available: { type: boolean }
+ *               image:
+ *                 type: string
+ *                 format: binary
  *     responses:
  *       201:
  *         description: Item criado
  */
-router.post('/', auth(['LOJA']), async (req, res, next) => {
+router.post('/', auth(['LOJA']), upload.single('image'), async (req, res, next) => {
   try {
     const { storeId, name, description, category, price, image, available = true } = req.body;
+    const parsedPrice = Number(price);
 
     if (!storeId || !name || price === undefined) {
       return res.status(400).json({ message: 'storeId, name e price são obrigatórios.' });
+    }
+
+    if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ message: 'price deve ser um número válido maior ou igual a 0.' });
     }
 
     const store = await Store.findById(storeId);
@@ -34,17 +72,169 @@ router.post('/', auth(['LOJA']), async (req, res, next) => {
       return res.status(403).json({ message: 'Você só pode adicionar itens na sua própria loja.' });
     }
 
+    let imageUrl = image;
+    if (req.file) {
+      const uploaded = await uploadBufferToCloudinary(req.file.buffer, {
+        public_id: `menu-new-${Date.now()}`,
+        overwrite: true,
+      });
+      imageUrl = uploaded.secure_url;
+    }
+
     const item = await MenuItem.create({
       store: storeId,
       name,
       description,
       category,
-      price,
-      image,
-      available,
+      price: parsedPrice,
+      image: imageUrl,
+      available: typeof available === 'boolean' ? available : available === 'true',
     });
 
     return res.status(201).json(item);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /menus/{id}:
+ *   patch:
+ *     summary: Edita item de menu (somente LOJA dona da loja)
+ *     tags: [Menus]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               description: { type: string }
+ *               category: { type: string }
+ *               price: { type: number }
+ *               image: { type: string }
+ *               available: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Item atualizado
+ */
+router.patch('/:id', auth(['LOJA']), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const item = await MenuItem.findById(id).populate('store', 'owner');
+    if (!item) {
+      return res.status(404).json({ message: 'Item do menu não encontrado.' });
+    }
+
+    if (String(item.store.owner) !== req.user.id) {
+      return res.status(403).json({
+        message: 'Você só pode editar itens da sua própria loja.',
+      });
+    }
+
+    const allowedFields = ['name', 'description', 'category', 'price', 'image', 'available'];
+
+    allowedFields.forEach((field) => {
+      if (updates[field] !== undefined) {
+        if (field === 'price') {
+          item[field] = Number(updates[field]);
+          return;
+        }
+
+        if (field === 'available') {
+          item[field] =
+            typeof updates[field] === 'boolean' ? updates[field] : updates[field] === 'true';
+          return;
+        }
+
+        item[field] = updates[field];
+      }
+    });
+
+    await item.save();
+    return res.status(200).json(item);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /menus/{id}/image:
+ *   patch:
+ *     summary: Faz upload da imagem do item de menu no Cloudinary
+ *     tags: [Menus]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [image]
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Imagem atualizada no Cloudinary
+ */
+router.patch('/:id/image', auth(['LOJA']), upload.single('image'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const item = await MenuItem.findById(id).populate({
+      path: 'store',
+      select: 'owner',
+    });
+
+    if (!item) {
+      return res.status(404).json({ message: 'Item do menu não encontrado.' });
+    }
+
+    if (String(item.store.owner) !== req.user.id) {
+      return res.status(403).json({
+        message: 'Você só pode editar itens da sua própria loja.',
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Arquivo de imagem é obrigatório.' });
+    }
+
+    const uploaded = await uploadBufferToCloudinary(req.file.buffer, {
+      public_id: `menu-${item._id}-${Date.now()}`,
+      overwrite: true,
+    });
+
+    item.image = uploaded.secure_url;
+    await item.save();
+
+    return res.status(200).json({
+      message: 'Imagem atualizada com sucesso.',
+      image: item.image,
+      cloudinary: {
+        publicId: uploaded.public_id,
+        format: uploaded.format,
+      },
+    });
   } catch (error) {
     return next(error);
   }
