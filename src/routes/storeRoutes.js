@@ -1,5 +1,6 @@
 const express = require('express');
 const Store = require('../models/Store');
+const MenuItem = require('../models/MenuItem');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -109,6 +110,54 @@ router.get('/nearby', async (req, res, next) => {
     });
 
     return res.status(200).json(stores);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /stores/{id}:
+ *   get:
+ *     summary: Detalhes de uma loja com seus menus
+ *     tags: [Stores]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: onlyAvailable
+ *         required: false
+ *         schema: { type: boolean, default: false }
+ *     responses:
+ *       200:
+ *         description: Detalhes da loja e lista de menus
+ *       404:
+ *         description: Loja não encontrada
+ */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const onlyAvailable = req.query.onlyAvailable === 'true';
+
+    const store = await Store.findById(id).populate('owner', 'name email type');
+    if (!store) {
+      return res.status(404).json({ message: 'Loja não encontrada.' });
+    }
+
+    const menuFilter = { store: id };
+    if (onlyAvailable) {
+      menuFilter.available = true;
+    }
+
+    const menus = await MenuItem.find(menuFilter).sort({ price: 1, name: 1 });
+
+    return res.status(200).json({
+      store,
+      menus,
+      totalMenus: menus.length,
+    });
   } catch (error) {
     return next(error);
   }

@@ -121,6 +121,7 @@ Usuários padrão criados (senha: `123456`):
 
 - `POST /api/stores` (LOJA autenticada)
 - `GET /api/stores`
+- `GET /api/stores/:id?onlyAvailable=true` (detalhes da loja com menus)
 - `GET /api/stores/nearby?lat=-8.83&lng=13.24&radiusKm=5`
 
 ### Produtos (Menu)
