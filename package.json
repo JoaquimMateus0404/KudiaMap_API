@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "seed": "node scripts/seed.js",
+    "seed:reset": "node scripts/seed.js --reset"
   },
   "keywords": [
     "express",

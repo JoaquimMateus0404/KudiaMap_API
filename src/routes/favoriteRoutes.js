@@ -67,4 +67,45 @@ router.get('/mine', auth(['USER', 'LOJA']), async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /favorites/{storeId}:
+ *   delete:
+ *     summary: Remove uma loja dos favoritos do usuário autenticado
+ *     tags: [Favorites]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: storeId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Favorito removido com sucesso
+ *       404:
+ *         description: Favorito não encontrado
+ */
+router.delete('/:storeId', auth(['USER', 'LOJA']), async (req, res, next) => {
+  try {
+    const { storeId } = req.params;
+    if (!storeId) {
+      return res.status(400).json({ message: 'storeId é obrigatório.' });
+    }
+
+    const removed = await Favorite.findOneAndDelete({
+      user: req.user.id,
+      store: storeId,
+    });
+
+    if (!removed) {
+      return res.status(404).json({ message: 'Favorito não encontrado para este usuário.' });
+    }
+
+    return res.status(200).json({ message: 'Favorito removido com sucesso.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;

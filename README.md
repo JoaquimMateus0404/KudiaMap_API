@@ -81,6 +81,35 @@ Se `/api/docs` abrir em branco, valide primeiro se `/api/docs.json` retorna JSON
 npm test
 ```
 
+## Seeders (dados de teste)
+
+O projeto inclui seed para todas as coleções:
+
+- `Users`
+- `Store`
+- `MenuItem`
+- `Posts`
+- `Review`
+- `Favorite`
+
+Executar seed (somente banco vazio):
+
+```powershell
+npm.cmd run seed
+```
+
+Resetar e recriar todos os dados de teste:
+
+```powershell
+npm.cmd run seed:reset
+```
+
+Usuários padrão criados (senha: `123456`):
+
+- Admin: `admin@kudiamap.com`
+- Lojas: `owner.burger@kudiamap.com`, `owner.pizza@kudiamap.com`, `owner.grill@kudiamap.com`
+- Clientes: `ana@kudiamap.com`, `carlos@kudiamap.com`, `joana@kudiamap.com`, `mateus@kudiamap.com`
+
 ## Endpoints principais
 
 ### Auth
@@ -106,7 +135,7 @@ npm test
 
 - `POST /api/posts` / `GET /api/posts`
 - `POST /api/reviews` / `GET /api/reviews/store/:storeId`
-- `POST /api/favorites` / `GET /api/favorites/mine`
+- `POST /api/favorites` / `GET /api/favorites/mine` / `DELETE /api/favorites/:storeId`
 
 ### Admin (Gestão profissional de Posts)
 
