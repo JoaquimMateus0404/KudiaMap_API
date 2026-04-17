@@ -293,9 +293,31 @@ router.patch('/:id/image', auth(['LOJA']), upload.single('image'), async (req, r
  *           enum: [asc, desc]
  *           default: asc
  *         description: Direção da ordenação
+ *       - in: query
+ *         name: includeUnavailable
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Quando true, inclui itens indisponíveis
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Página (ativa paginação quando enviado com ou sem limit)
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *         description: Quantidade por página (padrão 20 quando paginação está ativa)
  *     responses:
  *       200:
- *         description: Produtos encontrados
+ *         description: Produtos encontrados (lista simples ou resposta paginada)
  */
 router.get('/search', async (req, res, next) => {
   try {
@@ -306,9 +328,16 @@ router.get('/search', async (req, res, next) => {
       maxPrice,
       sort = 'price',
       order = 'asc',
+      includeUnavailable = 'false',
+      page,
+      limit,
     } = req.query;
 
-    const filter = { available: true };
+    const filter = {};
+
+    if (includeUnavailable !== 'true') {
+      filter.available = true;
+    }
 
     if (q) {
       filter.$text = { $search: q };
@@ -327,11 +356,35 @@ router.get('/search', async (req, res, next) => {
     const sortField = ['price', 'name', 'createdAt'].includes(sort) ? sort : 'price';
     const sortOrder = order === 'desc' ? -1 : 1;
 
-    const items = await MenuItem.find(filter)
+    const query = MenuItem.find(filter)
       .populate('store', 'name category location')
       .sort({ [sortField]: sortOrder });
 
-    return res.status(200).json(items);
+    const shouldPaginate = page !== undefined || limit !== undefined;
+
+    if (!shouldPaginate) {
+      const items = await query;
+      return res.status(200).json(items);
+    }
+
+    const parsedPage = Math.max(1, Number(page) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const [items, total] = await Promise.all([
+      query.clone().skip(skip).limit(parsedLimit),
+      MenuItem.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      items,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / parsedLimit)),
+      },
+    });
   } catch (error) {
     return next(error);
   }
