@@ -127,6 +127,7 @@ Usuários padrão criados (senha: `123456`):
 ### Produtos (Menu)
 
 - `POST /api/menus` (LOJA autenticada, suporta upload de imagem no cadastro via multipart/form-data)
+- `GET /api/menus/:id` (detalhes completos do item + loja + métricas + relacionados)
 - `PATCH /api/menus/:id` (editar item do menu)
 - `PATCH /api/menus/:id/image` (upload de imagem para Cloudinary, multipart/form-data)
 - `GET /api/menus/search?q=x-burger&category=Hamburguer&minPrice=1000&maxPrice=3000`

@@ -9,6 +9,7 @@ const app = require('../src/app');
 const User = require('../src/models/User');
 const Store = require('../src/models/Store');
 const MenuItem = require('../src/models/MenuItem');
+const Review = require('../src/models/Review');
 
 describe('Menu routes', () => {
   let mongoServer;
@@ -52,6 +53,22 @@ describe('Menu routes', () => {
     });
     menuId = String(item._id);
 
+    await MenuItem.create({
+      store: store._id,
+      name: 'Batata Frita',
+      description: 'Porção média',
+      category: 'Acompanhamento',
+      price: 1200,
+      available: true,
+    });
+
+    await Review.create({
+      user: ownerUser._id,
+      store: store._id,
+      rating: 4,
+      comment: 'Bom menu',
+    });
+
     await request(app).post('/api/auth/register').send({
       name: 'Other Owner',
       email: 'outsider@example.com',
@@ -94,5 +111,17 @@ describe('Menu routes', () => {
       .send({ name: 'Tentativa indevida' });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it('deve retornar detalhes completos no GET /menus/:id', async () => {
+    const response = await request(app).get(`/api/menus/${menuId}`);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toHaveProperty('menu');
+    expect(response.body).toHaveProperty('store');
+    expect(response.body).toHaveProperty('relatedMenus');
+    expect(response.body.store).toHaveProperty('rating');
+    expect(response.body.store).toHaveProperty('totalReviews');
+    expect(response.body.store).toHaveProperty('stats');
   });
 });

@@ -1,11 +1,28 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const MenuItem = require('../models/MenuItem');
 const Store = require('../models/Store');
+const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadBufferToCloudinary } = require('../config/cloudinary');
 
 const router = express.Router();
+
+const toRad = (value) => (value * Math.PI) / 180;
+
+const calculateDistanceKm = (lat1, lng1, lat2, lng2) => {
+  const earthRadiusKm = 6371;
+  const deltaLat = toRad(lat2 - lat1);
+  const deltaLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+};
 
 /**
  * @swagger
@@ -423,6 +440,139 @@ router.get('/compare', async (req, res, next) => {
       productQuery: name,
       cheapest: comparison[0] || null,
       items: comparison,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /menus/{id}:
+ *   get:
+ *     summary: Detalhes completos de um item de menu
+ *     tags: [Menus]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: lat
+ *         required: false
+ *         schema: { type: number }
+ *       - in: query
+ *         name: lng
+ *         required: false
+ *         schema: { type: number }
+ *     responses:
+ *       200:
+ *         description: Detalhes do menu, loja, métricas e relacionados
+ *       404:
+ *         description: Item do menu não encontrado
+ */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id de menu inválido.' });
+    }
+
+    const menu = await MenuItem.findById(id).populate({
+      path: 'store',
+      populate: {
+        path: 'owner',
+        select: 'name email type',
+      },
+    });
+
+    if (!menu) {
+      return res.status(404).json({ message: 'Item do menu não encontrado.' });
+    }
+
+    if (!menu.store) {
+      return res.status(404).json({ message: 'Loja vinculada ao menu não encontrada.' });
+    }
+
+    const storeId = menu.store._id;
+
+    const [ratingSummary, storeMenuSummary, relatedMenus] = await Promise.all([
+      Review.aggregate([
+        { $match: { store: storeId } },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]),
+      MenuItem.aggregate([
+        { $match: { store: storeId } },
+        {
+          $group: {
+            _id: '$store',
+            totalMenus: { $sum: 1 },
+            availableMenus: {
+              $sum: {
+                $cond: [{ $eq: ['$available', true] }, 1, 0],
+              },
+            },
+            minPrice: { $min: '$price' },
+            maxPrice: { $max: '$price' },
+            avgPrice: { $avg: '$price' },
+          },
+        },
+      ]),
+      MenuItem.find({ store: storeId, _id: { $ne: menu._id }, available: true })
+        .select('name category price image available')
+        .sort({ createdAt: -1 })
+        .limit(5),
+    ]);
+
+    const ratingData = ratingSummary[0] || { avgRating: null, totalReviews: 0 };
+    const menuStats = storeMenuSummary[0] || {
+      totalMenus: 1,
+      availableMenus: menu.available ? 1 : 0,
+      minPrice: menu.price,
+      maxPrice: menu.price,
+      avgPrice: menu.price,
+    };
+
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    let distanceKm = null;
+
+    if (!Number.isNaN(lat) && !Number.isNaN(lng) && menu.store.location?.coordinates?.length === 2) {
+      const [storeLng, storeLat] = menu.store.location.coordinates;
+      distanceKm = Number(calculateDistanceKm(lat, lng, storeLat, storeLng).toFixed(1));
+    }
+
+    const menuObject = menu.toObject();
+
+    return res.status(200).json({
+      menu: menuObject,
+      store: {
+        ...menuObject.store,
+        rating:
+          ratingData.totalReviews > 0 && ratingData.avgRating !== null
+            ? Number(ratingData.avgRating.toFixed(1))
+            : null,
+        totalReviews: ratingData.totalReviews,
+        distanceKm,
+        stats: {
+          totalMenus: menuStats.totalMenus,
+          availableMenus: menuStats.availableMenus,
+          unavailableMenus: Math.max(0, menuStats.totalMenus - menuStats.availableMenus),
+          priceRange: {
+            min: menuStats.minPrice,
+            max: menuStats.maxPrice,
+            average: Number((menuStats.avgPrice || 0).toFixed(2)),
+          },
+        },
+      },
+      relatedMenus,
     });
   } catch (error) {
     return next(error);
