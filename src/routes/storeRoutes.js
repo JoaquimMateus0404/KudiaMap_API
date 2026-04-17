@@ -46,6 +46,46 @@ const buildRatingStages = () => [
   { $project: { ratingMeta: 0 } },
 ];
 
+const buildNearbyPipeline = ({ lat, lng, radiusKm, applyRadiusLimit }) => {
+  const geoNearStage = {
+    $geoNear: {
+      near: { type: 'Point', coordinates: [lng, lat] },
+      distanceField: 'distanceMeters',
+      spherical: true,
+    },
+  };
+
+  if (applyRadiusLimit) {
+    geoNearStage.$geoNear.maxDistance = radiusKm * 1000;
+  }
+
+  return [
+    geoNearStage,
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'owner',
+        foreignField: '_id',
+        as: 'owner',
+      },
+    },
+    {
+      $unwind: {
+        path: '$owner',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    ...buildRatingStages(),
+    {
+      $project: {
+        'owner.password': 0,
+        'owner.__v': 0,
+      },
+    },
+    { $sort: { distanceMeters: 1 } },
+  ];
+};
+
 /**
  * @swagger
  * /stores:
@@ -165,38 +205,15 @@ router.get('/nearby', async (req, res, next) => {
       return res.status(400).json({ message: 'lat e lng devem ser números válidos.' });
     }
 
-    const stores = await Store.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: [lng, lat] },
-          distanceField: 'distanceMeters',
-          maxDistance: radiusKm * 1000,
-          spherical: true,
-        },
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'owner',
-          foreignField: '_id',
-          as: 'owner',
-        },
-      },
-      {
-        $unwind: {
-          path: '$owner',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      ...buildRatingStages(),
-      {
-        $project: {
-          'owner.password': 0,
-          'owner.__v': 0,
-        },
-      },
-      { $sort: { distanceMeters: 1 } },
-    ]);
+    let stores = await Store.aggregate(
+      buildNearbyPipeline({ lat, lng, radiusKm, applyRadiusLimit: true })
+    );
+
+    if (stores.length === 0) {
+      stores = await Store.aggregate(
+        buildNearbyPipeline({ lat, lng, radiusKm, applyRadiusLimit: false })
+      );
+    }
 
     return res.status(200).json(stores);
   } catch (error) {
