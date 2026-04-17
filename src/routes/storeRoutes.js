@@ -1,9 +1,50 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Store = require('../models/Store');
 const MenuItem = require('../models/MenuItem');
+const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+
+const buildRatingStages = () => [
+  {
+    $lookup: {
+      from: 'reviews',
+      let: { storeId: '$_id' },
+      pipeline: [
+        { $match: { $expr: { $eq: ['$store', '$$storeId'] } } },
+        {
+          $group: {
+            _id: null,
+            avgRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ],
+      as: 'ratingMeta',
+    },
+  },
+  {
+    $addFields: {
+      totalReviews: {
+        $ifNull: [{ $arrayElemAt: ['$ratingMeta.totalReviews', 0] }, 0],
+      },
+      rating: {
+        $cond: [
+          {
+            $gt: [{ $ifNull: [{ $arrayElemAt: ['$ratingMeta.totalReviews', 0] }, 0] }, 0],
+          },
+          {
+            $round: [{ $arrayElemAt: ['$ratingMeta.avgRating', 0] }, 1],
+          },
+          null,
+        ],
+      },
+    },
+  },
+  { $project: { ratingMeta: 0 } },
+];
 
 /**
  * @swagger
@@ -60,7 +101,31 @@ router.post('/', auth(['LOJA']), async (req, res, next) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const stores = await Store.find().populate('owner', 'name email');
+    const stores = await Store.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'owner',
+          foreignField: '_id',
+          as: 'owner',
+        },
+      },
+      {
+        $unwind: {
+          path: '$owner',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      ...buildRatingStages(),
+      {
+        $project: {
+          'owner.password': 0,
+          'owner.__v': 0,
+        },
+      },
+      { $sort: { name: 1 } },
+    ]);
+
     return res.status(200).json(stores);
   } catch (error) {
     return next(error);
@@ -100,14 +165,38 @@ router.get('/nearby', async (req, res, next) => {
       return res.status(400).json({ message: 'lat e lng devem ser números válidos.' });
     }
 
-    const stores = await Store.find({
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [lng, lat] },
-          $maxDistance: radiusKm * 1000,
+    const stores = await Store.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [lng, lat] },
+          distanceField: 'distanceMeters',
+          maxDistance: radiusKm * 1000,
+          spherical: true,
         },
       },
-    });
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'owner',
+          foreignField: '_id',
+          as: 'owner',
+        },
+      },
+      {
+        $unwind: {
+          path: '$owner',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      ...buildRatingStages(),
+      {
+        $project: {
+          'owner.password': 0,
+          'owner.__v': 0,
+        },
+      },
+      { $sort: { distanceMeters: 1 } },
+    ]);
 
     return res.status(200).json(stores);
   } catch (error) {
@@ -141,10 +230,32 @@ router.get('/:id', async (req, res, next) => {
     const { id } = req.params;
     const onlyAvailable = req.query.onlyAvailable === 'true';
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'id de loja inválido.' });
+    }
+
     const store = await Store.findById(id).populate('owner', 'name email type');
     if (!store) {
       return res.status(404).json({ message: 'Loja não encontrada.' });
     }
+
+    const [ratingSummary] = await Review.aggregate([
+      {
+        $match: {
+          store: new mongoose.Types.ObjectId(id),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalReviews = ratingSummary?.totalReviews || 0;
+    const rating = totalReviews > 0 ? Number(ratingSummary.avgRating.toFixed(1)) : null;
 
     const menuFilter = { store: id };
     if (onlyAvailable) {
@@ -154,7 +265,11 @@ router.get('/:id', async (req, res, next) => {
     const menus = await MenuItem.find(menuFilter).sort({ price: 1, name: 1 });
 
     return res.status(200).json({
-      store,
+      store: {
+        ...store.toObject(),
+        rating,
+        totalReviews,
+      },
       menus,
       totalMenus: menus.length,
     });
