@@ -1,6 +1,8 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Favorite = require('../models/Favorite');
 const Store = require('../models/Store');
+const Review = require('../models/Review');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -61,7 +63,61 @@ router.post('/', auth(['USER', 'LOJA']), async (req, res, next) => {
 router.get('/mine', auth(['USER', 'LOJA']), async (req, res, next) => {
   try {
     const favorites = await Favorite.find({ user: req.user.id }).populate('store');
-    return res.status(200).json(favorites);
+
+    const storeIds = favorites
+      .map((favorite) => favorite.store?._id)
+      .filter(Boolean)
+      .map((id) => new mongoose.Types.ObjectId(id));
+
+    const ratings =
+      storeIds.length > 0
+        ? await Review.aggregate([
+            {
+              $match: {
+                store: { $in: storeIds },
+              },
+            },
+            {
+              $group: {
+                _id: '$store',
+                avgRating: { $avg: '$rating' },
+                totalReviews: { $sum: 1 },
+              },
+            },
+          ])
+        : [];
+
+    const ratingMap = new Map(
+      ratings.map((entry) => [
+        String(entry._id),
+        {
+          rating: Number(entry.avgRating.toFixed(1)),
+          totalReviews: entry.totalReviews,
+        },
+      ])
+    );
+
+    const payload = favorites.map((favorite) => {
+      const favoriteObj = favorite.toObject();
+
+      if (!favoriteObj.store) {
+        return favoriteObj;
+      }
+
+      const storeKey = String(favoriteObj.store._id);
+      const ratingMeta = ratingMap.get(storeKey) || { rating: null, totalReviews: 0 };
+
+      return {
+        ...favoriteObj,
+        store: {
+          ...favoriteObj.store,
+          rating: ratingMeta.rating,
+          totalReviews: ratingMeta.totalReviews,
+        },
+      };
+    });
+
+    return res.status(200).json(payload);
   } catch (error) {
     return next(error);
   }
