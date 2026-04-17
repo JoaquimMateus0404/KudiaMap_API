@@ -246,6 +246,53 @@ router.patch('/:id/image', auth(['LOJA']), upload.single('image'), async (req, r
  *   get:
  *     summary: Pesquisa produtos por texto/categoria/faixa de preço
  *     tags: [Menus]
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Texto para busca (nome/descrição via índice de texto)
+ *         example: burger
+ *       - in: query
+ *         name: category
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Categoria do item (filtro parcial, case-insensitive)
+ *         example: hamburgueria
+ *       - in: query
+ *         name: minPrice
+ *         required: false
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: Preço mínimo
+ *         example: 10
+ *       - in: query
+ *         name: maxPrice
+ *         required: false
+ *         schema:
+ *           type: number
+ *           format: float
+ *         description: Preço máximo
+ *         example: 50
+ *       - in: query
+ *         name: sort
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [price, name, createdAt]
+ *           default: price
+ *         description: Campo de ordenação
+ *       - in: query
+ *         name: order
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: asc
+ *         description: Direção da ordenação
  *     responses:
  *       200:
  *         description: Produtos encontrados
