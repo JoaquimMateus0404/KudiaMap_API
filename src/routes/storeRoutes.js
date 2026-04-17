@@ -223,6 +223,71 @@ router.get('/nearby', async (req, res, next) => {
 
 /**
  * @swagger
+ * /stores/me/has-store:
+ *   get:
+ *     summary: Verifica se o usuário LOJA autenticado já possui loja cadastrada
+ *     tags: [Stores]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Retorna apenas hasStore (true/false)
+ */
+router.get('/me/has-store', auth(['LOJA']), async (req, res, next) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).select('_id');
+
+    return res.status(200).json({
+      hasStore: Boolean(store),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /stores/user/{userId}/has-store:
+ *   get:
+ *     summary: Verifica se um usuário do tipo LOJA possui loja cadastrada
+ *     tags: [Stores]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Retorna apenas hasStore (true/false)
+ *       403:
+ *         description: Acesso negado para consultar outro usuário
+ */
+router.get('/user/:userId/has-store', auth(['LOJA', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'userId inválido.' });
+    }
+
+    if (req.user.type !== 'ADMIN' && req.user.id !== userId) {
+      return res.status(403).json({ message: 'Você não pode consultar outro usuário.' });
+    }
+
+    const store = await Store.findOne({ owner: userId }).select('_id');
+
+    return res.status(200).json({
+      hasStore: Boolean(store),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
  * /stores/{id}:
  *   get:
  *     summary: Detalhes de uma loja com seus menus
