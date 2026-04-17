@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const Store = require('../models/Store');
 const MenuItem = require('../models/MenuItem');
 const Review = require('../models/Review');
+const Favorite = require('../models/Favorite');
+const Post = require('../models/Post');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -280,6 +282,190 @@ router.get('/user/:userId/has-store', auth(['LOJA', 'ADMIN']), async (req, res, 
 
     return res.status(200).json({
       hasStore: Boolean(store),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /stores/me/dashboard:
+ *   get:
+ *     summary: Dashboard de métricas para o usuário LOJA autenticado
+ *     tags: [Stores]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Métricas consolidadas da loja para painel do lojista
+ */
+router.get('/me/dashboard', auth(['LOJA']), async (req, res, next) => {
+  try {
+    const store = await Store.findOne({ owner: req.user.id }).select(
+      'name category description location createdAt updatedAt'
+    );
+
+    if (!store) {
+      return res.status(200).json({
+        hasStore: false,
+        store: null,
+        metrics: {
+          menus: {
+            total: 0,
+            available: 0,
+            unavailable: 0,
+            averagePrice: 0,
+            minPrice: 0,
+            maxPrice: 0,
+          },
+          reviews: {
+            total: 0,
+            averageRating: null,
+          },
+          favorites: {
+            total: 0,
+          },
+          posts: {
+            total: 0,
+            published: 0,
+            draft: 0,
+            archived: 0,
+          },
+        },
+      });
+    }
+
+    const storeId = store._id;
+
+    const [menuAgg, reviewAgg, favoriteCount, postAgg, recentMenus, recentReviews, recentPosts] =
+      await Promise.all([
+        MenuItem.aggregate([
+          { $match: { store: storeId } },
+          {
+            $group: {
+              _id: '$store',
+              total: { $sum: 1 },
+              available: {
+                $sum: {
+                  $cond: [{ $eq: ['$available', true] }, 1, 0],
+                },
+              },
+              averagePrice: { $avg: '$price' },
+              minPrice: { $min: '$price' },
+              maxPrice: { $max: '$price' },
+            },
+          },
+        ]),
+        Review.aggregate([
+          { $match: { store: storeId } },
+          {
+            $group: {
+              _id: '$store',
+              total: { $sum: 1 },
+              averageRating: { $avg: '$rating' },
+            },
+          },
+        ]),
+        Favorite.countDocuments({ store: storeId }),
+        Post.aggregate([
+          {
+            $match: {
+              store: storeId,
+              isDeleted: false,
+            },
+          },
+          {
+            $group: {
+              _id: '$store',
+              total: { $sum: 1 },
+              published: {
+                $sum: {
+                  $cond: [{ $eq: ['$status', 'PUBLISHED'] }, 1, 0],
+                },
+              },
+              draft: {
+                $sum: {
+                  $cond: [{ $eq: ['$status', 'DRAFT'] }, 1, 0],
+                },
+              },
+              archived: {
+                $sum: {
+                  $cond: [{ $eq: ['$status', 'ARCHIVED'] }, 1, 0],
+                },
+              },
+            },
+          },
+        ]),
+        MenuItem.find({ store: storeId })
+          .select('name category price available createdAt')
+          .sort({ createdAt: -1 })
+          .limit(5),
+        Review.find({ store: storeId })
+          .select('rating comment date')
+          .populate('user', 'name')
+          .sort({ date: -1 })
+          .limit(5),
+        Post.find({ store: storeId, isDeleted: false })
+          .select('title status publishedAt createdAt')
+          .sort({ createdAt: -1 })
+          .limit(5),
+      ]);
+
+    const menuMetrics = menuAgg[0] || {
+      total: 0,
+      available: 0,
+      averagePrice: 0,
+      minPrice: 0,
+      maxPrice: 0,
+    };
+
+    const reviewMetrics = reviewAgg[0] || {
+      total: 0,
+      averageRating: null,
+    };
+
+    const postMetrics = postAgg[0] || {
+      total: 0,
+      published: 0,
+      draft: 0,
+      archived: 0,
+    };
+
+    return res.status(200).json({
+      hasStore: true,
+      store,
+      metrics: {
+        menus: {
+          total: menuMetrics.total,
+          available: menuMetrics.available,
+          unavailable: Math.max(0, menuMetrics.total - menuMetrics.available),
+          averagePrice: Number((menuMetrics.averagePrice || 0).toFixed(2)),
+          minPrice: menuMetrics.minPrice || 0,
+          maxPrice: menuMetrics.maxPrice || 0,
+        },
+        reviews: {
+          total: reviewMetrics.total,
+          averageRating:
+            reviewMetrics.averageRating !== null
+              ? Number(reviewMetrics.averageRating.toFixed(1))
+              : null,
+        },
+        favorites: {
+          total: favoriteCount,
+        },
+        posts: {
+          total: postMetrics.total,
+          published: postMetrics.published,
+          draft: postMetrics.draft,
+          archived: postMetrics.archived,
+        },
+      },
+      recent: {
+        menus: recentMenus,
+        reviews: recentReviews,
+        posts: recentPosts,
+      },
     });
   } catch (error) {
     return next(error);

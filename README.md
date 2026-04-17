@@ -122,6 +122,7 @@ Usuários padrão criados (senha: `123456`):
 - `POST /api/stores` (LOJA autenticada)
 - `GET /api/stores`
 - `GET /api/stores/me/has-store` (LOJA autenticada, verifica se já possui loja)
+- `GET /api/stores/me/dashboard` (LOJA autenticada, métricas completas do dashboard da loja)
 - `GET /api/stores/user/:userId/has-store` (LOJA/ADMIN autenticado, verifica por id do usuário)
 - `GET /api/stores/:id?onlyAvailable=true` (detalhes da loja com menus)
 - `GET /api/stores/nearby?lat=-8.83&lng=13.24&radiusKm=5`
